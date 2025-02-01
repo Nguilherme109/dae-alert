@@ -16,8 +16,8 @@ def authenticate_smsbuzz():
     }
 
     auth_data = {
-        "Username": "pedro.torrezao@gmail.com",
-        "Password": "&U47weQvmrLG"
+        "Username": "nuno.guilherme@formasimples.pt",
+        "Password": "Ng46533850.*"
     }
 
     try:
@@ -53,7 +53,7 @@ def trigger_alert():
         # Dados mínimos com número formatado
         sms_data = {
             "SenderName": "SMSTEST",
-            "Destinations": [ "933825194", "923383068"],
+            "Destinations": [ "+351933825194", "+351923383068"],
             "Text": "SOS DAE, SOS DAE. Alerta Cabine DAE Pavilhão Casa do Povo, operacionais em menos de 3 minutos.",
             "IsUnicode": "True"
         }
