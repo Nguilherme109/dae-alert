@@ -51,7 +51,7 @@ def trigger_alert():
         
         sms_data = {
             "SenderName": "SMSBUZZ",
-            "Destinations": "933825194",
+            "Destinations": "+351933825194",
             "Text": "SOS DAE, SOS DAE. Alerta Cabine DAE Pavilhão Casa do Povo, operacionais em menos de 3 minutos."
         }
 
