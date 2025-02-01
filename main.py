@@ -53,7 +53,7 @@ def trigger_alert():
         # Dados mínimos com número formatado
         sms_data = {
             "SenderName": "DAE SOS",
-            "Destinations": [ "+351933825194", "+351934235069", "+351937838650", "+351933734373"],
+            "Destinations": [ "+351933825194", "+351937838650", "+351933734373"],
             "Text": "SOS DAE, SOS DAE. Alerta Cabine DAE Pavilhão Casa do Povo, operacionais em menos de 3 minutos.",
             "IsUnicode": "True"
         }
