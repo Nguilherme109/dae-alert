@@ -59,19 +59,17 @@ def send_sms(token):
 def make_voice_call(token):
    """Função para realizar chamada de voz"""
    try:
-       voice_url = "https://api.smsbuzz.net/voice/call"
+       voice_url = "https://api.smsbuzz.net/call/send"
        headers = {
            "Authorization": f"Bearer {token}",
            "Content-Type": "application/json"
        }
        
        voice_data = {
-           "Destinations": ["+351933825194", "+351937838650", "+351933734373"],
+           "Destinations[]": ["+351933825194", "+351937838650", "+351933734373"],
            "Text": "SOS, DAÉ, SOS, DAÉ. DAÉ, Pavilhão Casa do Povo. Operacionais DAÉ, em menos de 3 minutos. Responda com, 1, a caminho, 2, indisponível.",
-           "Options": ["1", "2"],
            "Language": "pt-PT",
-           "Voice": "pt-PT-RaquelNeural",
-           "RetryCount": 2
+           "TTSVoice": "pt-PT-RaquelNeural"
        }
        
        logger.info(f"Iniciando chamada de voz com dados: {voice_data}")
