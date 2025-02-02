@@ -3,26 +3,36 @@ import requests
 from flask import Flask, request, jsonify
 import logging
 from datetime import datetime, timedelta
-import threading
+import hashlib
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Lock para controle de concorrência
-execution_lock = threading.Lock()
-last_execution = datetime.now() - timedelta(minutes=1)  # Inicializa com tempo passado
+# Cache de requisições processadas
+processed_requests = set()
 
-def can_execute():
-   """Verifica se pode executar com lock de thread"""
-   global last_execution
+def generate_request_id():
+   """Gera um ID único para a requisição baseado no timestamp"""
+   timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+   return hashlib.md5(timestamp.encode()).hexdigest()
+
+def is_duplicate_request(request_id, timeout=30):
+   """Verifica se a requisição é duplicada"""
+   current_time = datetime.now()
    
-   with execution_lock:
-       now = datetime.now()
-       if (now - last_execution).total_seconds() < 30:
-           return False
-       last_execution = now
+   # Limpa requisições antigas
+   global processed_requests
+   processed_requests = {req for req in processed_requests 
+                        if (current_time - datetime.strptime(req.split('_')[1], '%Y%m%d%H%M%S')).seconds < timeout}
+   
+   request_with_time = f"{request_id}_{current_time.strftime('%Y%m%d%H%M%S')}"
+   
+   if request_id in {req.split('_')[0] for req in processed_requests}:
        return True
+   
+   processed_requests.add(request_with_time)
+   return False
 
 def authenticate_smsbuzz():
    """Autenticação na API SMSBuzz"""
@@ -63,12 +73,10 @@ def send_sms(token):
            "IsUnicode": "True"
        }
        
-       # Adiciona um lock específico para o envio de SMS
-       with execution_lock:
-           logger.info(f"Enviando SMS com dados: {sms_data}")
-           response = requests.post(sms_url, json=sms_data, headers=headers)
-           logger.info(f"SMS Response Code: {response.status_code}")
-           logger.info(f"SMS Response Text: {response.text}")
+       logger.info(f"Enviando SMS com dados: {sms_data}")
+       response = requests.post(sms_url, json=sms_data, headers=headers)
+       logger.info(f"SMS Response Code: {response.status_code}")
+       logger.info(f"SMS Response Text: {response.text}")
        
        return response.status_code == 200, response.text
    except Exception as e:
@@ -112,15 +120,17 @@ def make_voice_call(token):
 
 @app.route('/trigger', methods=['GET', 'POST'])
 def trigger_alert():
-   if not can_execute():
-       logger.info("Requisição ignorada - muito próxima da anterior")
-       return jsonify({
-           "success": False,
-           "message": "Requisição muito próxima da anterior"
-       })
-
    try:
-       logger.info("Recebido sinal da Shelly - Iniciando processo")
+       request_id = generate_request_id()
+       
+       if is_duplicate_request(request_id):
+           logger.info(f"Requisição duplicada detectada: {request_id}")
+           return jsonify({
+               "success": False,
+               "message": "Requisição duplicada detectada"
+           })
+
+       logger.info(f"Novo processamento iniciado: {request_id}")
        
        token = authenticate_smsbuzz()
        if not token:
@@ -133,6 +143,7 @@ def trigger_alert():
        return jsonify({
            "success": sms_success or voice_success,
            "message": "Processo concluído",
+           "request_id": request_id,
            "sms_status": {"success": sms_success, "response": sms_response},
            "voice_status": {"success": voice_success, "response": voice_response}
        })
