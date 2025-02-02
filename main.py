@@ -3,30 +3,26 @@ import requests
 from flask import Flask, request, jsonify
 import logging
 from datetime import datetime, timedelta
+import threading
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Variável global para controle de última execução
-last_execution_time = None
+# Lock para controle de concorrência
+execution_lock = threading.Lock()
+last_execution = datetime.now() - timedelta(minutes=1)  # Inicializa com tempo passado
 
 def can_execute():
-   """Verifica se pode executar baseado no tempo da última execução"""
-   global last_execution_time
-   now = datetime.now()
+   """Verifica se pode executar com lock de thread"""
+   global last_execution
    
-   # Se é a primeira execução, permite
-   if last_execution_time is None:
-       last_execution_time = now
+   with execution_lock:
+       now = datetime.now()
+       if (now - last_execution).total_seconds() < 30:
+           return False
+       last_execution = now
        return True
-   
-   # Se passaram mais de 30 segundos da última execução
-   if (now - last_execution_time).total_seconds() > 30:
-       last_execution_time = now
-       return True
-       
-   return False
 
 def authenticate_smsbuzz():
    """Autenticação na API SMSBuzz"""
@@ -67,10 +63,12 @@ def send_sms(token):
            "IsUnicode": "True"
        }
        
-       logger.info(f"Enviando SMS com dados: {sms_data}")
-       response = requests.post(sms_url, json=sms_data, headers=headers)
-       logger.info(f"SMS Response Code: {response.status_code}")
-       logger.info(f"SMS Response Text: {response.text}")
+       # Adiciona um lock específico para o envio de SMS
+       with execution_lock:
+           logger.info(f"Enviando SMS com dados: {sms_data}")
+           response = requests.post(sms_url, json=sms_data, headers=headers)
+           logger.info(f"SMS Response Code: {response.status_code}")
+           logger.info(f"SMS Response Text: {response.text}")
        
        return response.status_code == 200, response.text
    except Exception as e:
@@ -114,14 +112,14 @@ def make_voice_call(token):
 
 @app.route('/trigger', methods=['GET', 'POST'])
 def trigger_alert():
-   try:
-       if not can_execute():
-           logger.info("Requisição ignorada - muito próxima da anterior")
-           return jsonify({
-               "success": False,
-               "message": "Requisição muito próxima da anterior"
-           })
+   if not can_execute():
+       logger.info("Requisição ignorada - muito próxima da anterior")
+       return jsonify({
+           "success": False,
+           "message": "Requisição muito próxima da anterior"
+       })
 
+   try:
        logger.info("Recebido sinal da Shelly - Iniciando processo")
        
        token = authenticate_smsbuzz()
