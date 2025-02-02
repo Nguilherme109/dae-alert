@@ -2,10 +2,31 @@ import os
 import requests
 from flask import Flask, request, jsonify
 import logging
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Controle de último envio
+last_trigger_time = None
+MIN_INTERVAL = timedelta(seconds=30)  # Intervalo mínimo entre envios
+
+def can_trigger():
+   """Verifica se pode enviar novo alerta"""
+   global last_trigger_time
+   now = datetime.now()
+   
+   if last_trigger_time is None:
+       last_trigger_time = now
+       return True
+       
+   if now - last_trigger_time < MIN_INTERVAL:
+       logger.info("Ignorando trigger - muito próximo do último envio")
+       return False
+       
+   last_trigger_time = now
+   return True
 
 def authenticate_smsbuzz():
    """Autenticação na API SMSBuzz"""
@@ -65,20 +86,18 @@ def make_voice_call(token):
            "Content-Type": "application/x-www-form-urlencoded"
        }
        
-       # Formatando dados para form-data
        voice_data = {
-           "Destinations[]": "+351933825194",  # Um destino por vez
+           "Destinations[]": "+351933825194",
            "Text": "SOS, DAÉ, SOS, DAÉ. DAÉ, Pavilhão Casa do Povo. Operacionais DAÉ, em menos de 3 minutos. Responda com, 1, a caminho, 2, indisponível.",
            "Language": "pt-PT",
            "TTSVoice": "pt-PT-RaquelNeural",
-           "AudioFile": ""
+           "AudioFile": "",
+           "CallerId": "351211451981"
        }
        
-       # Lista de números para chamar
        destinations = ["+351933825194", "+351937838650"]
        responses = []
        
-       # Fazer uma chamada para cada destino
        for dest in destinations:
            voice_data["Destinations[]"] = dest
            logger.info(f"Iniciando chamada de voz para {dest}")
@@ -87,7 +106,6 @@ def make_voice_call(token):
            logger.info(f"Voice Call Response Text for {dest}: {response.text}")
            responses.append({"destination": dest, "success": response.status_code == 200})
        
-       # Verifica se todas as chamadas foram bem sucedidas
        all_success = all(r["success"] for r in responses)
        return all_success, str(responses)
    except Exception as e:
@@ -97,21 +115,22 @@ def make_voice_call(token):
 @app.route('/trigger', methods=['GET', 'POST'])
 def trigger_alert():
    try:
+       if not can_trigger():
+           return jsonify({
+               "success": False,
+               "message": "Ignorado - muito próximo do último envio"
+           })
+
        logger.info("Recebido sinal da Shelly - Iniciando processo")
        
-       # Autenticação única
        token = authenticate_smsbuzz()
        if not token:
            logger.error("Falha na autenticação")
            return jsonify({"success": False, "message": "Falha na autenticação"}), 401
 
-       # Envio de SMS
        sms_success, sms_response = send_sms(token)
-       
-       # Chamada de voz
        voice_success, voice_response = make_voice_call(token)
        
-       # Verifica resultados
        return jsonify({
            "success": sms_success or voice_success,
            "message": "Processo concluído",
